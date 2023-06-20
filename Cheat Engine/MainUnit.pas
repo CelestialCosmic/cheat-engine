@@ -23,8 +23,7 @@ uses
   {$endif}
 
   {$ifdef windows}
-  jwaWindows, Windows, LCLIntf, LCLProc, Messages, SysUtils, Classes, SyncObjs,
-  SyncObjs2, Graphics,
+  jwaWindows, Windows, LCLIntf, LCLProc, Messages, SysUtils, Classes, Graphics,
   Controls, Forms, ComCtrls, StdCtrls, Menus, Buttons, shellapi,
   imagehlp, ExtCtrls, Dialogs, Clipbrd, CEDebugger, kerneldebugger, assemblerunit,
   hotkeyhandler, registry, Math, ImgList, commctrl, NewKernelHandler,
@@ -309,18 +308,15 @@ type
     cbCompareToSavedScan: TCheckBox;
     cbLuaFormula: TCheckBox;
     cbNewLuaState: TCheckBox;
-    cbPresentMemoryOnly: TCheckBox;
     ColorDialog1: TColorDialog;
     CreateGroup: TMenuItem;
     FromAddress: TEdit;
     andlabel: TLabel;
+    Image1: TImage;
     lblcompareToSavedScan: TLabel;
-    miTestAccessViolationThread: TMenuItem;
-    miTriggerAccessViolation: TMenuItem;
     MenuItem16: TMenuItem;
     MenuItem17: TMenuItem;
     MenuItem18: TMenuItem;
-    miClearWorkingSet: TMenuItem;
     miNetworkReadUseProcMem: TMenuItem;
     miNetworkReadUsePtrace: TMenuItem;
     miNetworkReadUseVmread: TMenuItem;
@@ -336,7 +332,7 @@ type
     mfImageList: TImageList;
     lblSigned: TLabel;
     MainMenu2: TMainMenu;
-    miTutorial64: TMenuItem;
+    MenuItem12: TMenuItem;
     MenuItem14: TMenuItem;
     MenuItem15: TMenuItem;
     Copyselectedaddresses1: TMenuItem;
@@ -346,7 +342,9 @@ type
     miDotNET: TMenuItem;
     miGetDotNetObjectList: TMenuItem;
     miDBVMFindWhatWritesOrAccesses: TMenuItem;
-    pmPresentMemoryOnly: TPopupMenu;
+    Panel11: TPanel;
+    Panel12: TPanel;
+    Panel13: TPanel;
     sep2: TMenuItem;
     miChangeValueBack: TMenuItem;
     miSignTable: TMenuItem;
@@ -358,7 +356,8 @@ type
     miLanguages: TMenuItem;
     ScanText2: TLabel;
     scanvalue2: TEdit;
-    sbClearActiveMemory: TSpeedButton;
+    SettingsButton: TSpeedButton;
+    Splitter2: TSplitter;
     tLuaGCPassive: TTimer;
     tLuaGCActive: TTimer;
     ToAddress: TEdit;
@@ -468,7 +467,6 @@ type
     rt1: TRadioButton;
     rt2: TRadioButton;
     rt3: TRadioButton;
-    SettingsButton: TSpeedButton;
     tbSpeed: TTrackBar;
     UpdateTimer: TTimer;
     FreezeTimer: TTimer;
@@ -594,13 +592,9 @@ type
       var DefaultDraw: Boolean);
     procedure CreateGroupClick(Sender: TObject);
     procedure gbScanOptionsChangeBounds(Sender: TObject);
-    procedure Label3Click(Sender: TObject);
-    procedure miTestAccessViolationThreadClick(Sender: TObject);
-    procedure miTriggerAccessViolationClick(Sender: TObject);
-    procedure miTutorial64Click(Sender: TObject);
+    procedure MenuItem12Click(Sender: TObject);
     procedure MenuItem15Click(Sender: TObject);
     procedure MenuItem16Click(Sender: TObject);
-    procedure miClearWorkingSetClick(Sender: TObject);
     procedure miDeleteSavedScanResultsClick(Sender: TObject);
     procedure miFoundListPreferencesClick(Sender: TObject);
     procedure miAutoAssembleErrorMessageClick(Sender: TObject);
@@ -635,6 +629,7 @@ type
     procedure miShowCustomTypeDebugClick(Sender: TObject);
     procedure miShowPreviousValueClick(Sender: TObject);
     procedure miSnapshothandlerClick(Sender: TObject);
+    procedure miTablistSeperatorClick(Sender: TObject);
     procedure miTutorialClick(Sender: TObject);
     procedure miChangeValueClick(Sender: TObject);
     procedure MenuItem1Click(Sender: TObject);
@@ -863,12 +858,6 @@ type
 
     InsideSetActivePreviousResult: boolean;
 
-    exceptionerrorcs: TCriticalSection;
-    currentexceptionerror: string;
-    showingException: boolean;
-
-    TraceExceptions: boolean;
-
     procedure updateNetworkOption(sender: TObject);
     procedure updateNetworkOptions;
 
@@ -886,7 +875,7 @@ type
     procedure MemScanStart(sender: TObject);
     procedure MemScanDone(sender: TObject);
     procedure PluginSync(var m: TMessage); message wm_pluginsync;
-    procedure ShowError;
+    procedure ShowError(var message: TMessage); message wm_showerror;
     procedure Edit;
     procedure paste(simplecopypaste: boolean);
     procedure CopySelectedRecords;
@@ -1122,8 +1111,7 @@ uses cefuncproc, MainUnit2, ProcessWindowUnit, MemoryBrowserFormUnit, TypePopup,
   PointerscanresultReader, Parsers, Globals {$ifdef windows},GnuAssembler, xinput{$endif} ,DPIHelper,
   multilineinputqueryunit {$ifdef windows},winsapi{$endif} ,LuaClass, Filehandler{$ifdef windows}, feces{$endif}
   {$ifdef windows},frmDBVMWatchConfigUnit, frmDotNetObjectListUnit{$endif} ,ceregistry ,UnexpectedExceptionsHelper
-  ,frmFoundlistPreferencesUnit, fontSaveLoadRegistry{$ifdef windows}, cheatecoins{$endif},strutils, iptlogdisplay,
-  libcepack;
+  ,frmFoundlistPreferencesUnit, fontSaveLoadRegistry{$ifdef windows}, cheatecoins{$endif},strutils, iptlogdisplay;
 
 resourcestring
   rsInvalidStartAddress = 'Invalid start address: %s';
@@ -1347,10 +1335,6 @@ resourcestring
   rsPreviousValueList = 'Previous value list';
   rsSelectTheSavedResult = 'Select the saved results you wish to use';
   rsNetworkOption = 'Network option :';
-  rsClearingMeansSlowness = 'Clearing the assigned memory for this process '
-    +'will cause it to obtain all the memory it needs again which can cause a '
-    +'temporary slowdown in the target. Make sure the value you''re interested '
-    +'in gets accessed once before you scan. Continue?';
 
 const
   VARTYPE_INDEX_BINARY=0;
@@ -2170,9 +2154,27 @@ begin
   m.Result := ptruint(func(params));
 end;
 
-procedure TMainForm.ShowError;
+procedure TMainForm.ShowError(var message: TMessage);
+var
+  err: pchar;
+  errs: string;
 begin
-  MessageDlg(currentexceptionerror, mterror,[mbok],0);
+  err:=pchar(message.lParam);
+
+  if err<>nil then
+  begin
+    errs:=err;
+
+    if (errs='Access violation') and (miEnableLCLDebug.checked) then
+      errs:=errs+#13#10'Please send the cedebug.txt file to Dark Byte. Thanks';
+
+    if MainThreadID=GetCurrentThreadId then
+      MessageDlg(errs, mtError, [mbOK], 0);
+
+    freememandnil(err);
+  end
+  else
+    MessageDlg(rsUnspecifiedError, mtError, [mbOK], 0);
 end;
 
 //----------------------------------
@@ -2416,40 +2418,25 @@ begin
   end;
 end;
 
+
 procedure TMainForm.exceptionhandler(Sender: TObject; E: Exception);
-var
-  s: string;
+var err: pchar;
 begin
   //unhandled exeption. Also clean lua stack
-  s:=GetThreadName+': Unhandled exception: '+e.message;
 
-  if TraceExceptions then
+  getmem(err, length(e.Message)+1);
+  strcopy(err, pchar(e.message));
+  err[length(e.message)]:=#0;
+
+
+  if miEnableLCLDebug.checked then
   begin
     DebugLn('Exception '+e.Message);
     DumpExceptionBackTrace;
 
-    s:=s+#13#10'Please send the cedebug.txt file to Dark Byte. Thanks';
   end;
 
-  if showingException then exit; //don't bother showing another one. Just read the log
-
-  if exceptionerrorcs.TryEnter then //it's not important if it's already showing another error
-  begin
-    if showingException=false then //should be the case, but check anyhow
-    begin
-      currentexceptionerror:=s;
-
-      showingException:=true;
-      if MainThreadID=GetCurrentThreadId then
-        showerror
-      else
-        tthread.Synchronize(nil, showerror);
-
-      showingException:=false;
-    end;
-
-    exceptionerrorcs.leave;
-  end;
+  PostMessage(handle, wm_showerror, 0, ptruint(err));
 end;
 
 
@@ -3040,10 +3027,14 @@ begin
     cbSpeedhack.Enabled := False;
     cbUnrandomizer.Enabled := False;
 
+
+
     if processid <> $FFFFFFFF then
     begin
+
       processlabel.Caption := strError;
       raise Exception.Create(strErrorWhileOpeningProcess{$ifdef darwin}+strErrorwhileOpeningProcessMac{$endif});
+
     end
     else
     begin
@@ -3238,8 +3229,6 @@ begin
   else
     savetable(savedialog1.FileName);
 end;
-
-
 
 procedure TMainForm.Description1Click(Sender: TObject);
 begin
@@ -3510,10 +3499,6 @@ begin
       llf.Finish;
   end;
 
-  TraceExceptions:=miEnableLCLDebug.checked;
-
-  miTriggerAccessViolation.visible:=TraceExceptions;
-  miTestAccessViolationThread.visible:=TraceExceptions;
 
 end;
 
@@ -3617,63 +3602,6 @@ begin
   spawnBoundsUpdater;
 end;
 
-procedure TMainForm.Label3Click(Sender: TObject);
-begin
-
-end;
-
-
-procedure triggerAV(AData : Pointer);
-var p: pbyte;
-begin
-  p:=pbyte($ce);
-  p^:=p^+$ce;
-
-  beep;
-
-end;
-
-type TTestThread=class(tthread)
-  procedure Execute; override;
-end;
-
-
-procedure TTestThread.Execute;
-begin
-  SetThreadDebugName(ThreadID,'Crashy thread');
-  triggerav(nil);
-
-end;
-
-procedure TMainForm.miTestAccessViolationThreadClick(Sender: TObject);
-var m: Tmethod;
-
-  t: TTestthread;
-begin
-  t:=ttestthread.Create(true);
-
-
-  //t.FreeOnTerminate:=true;
-  t.Start;
-  {
-  while t.Finished=false do
-    sleep(100);
-
-  if t.FatalException=nil then
-    showmessage('all ok')
-  else
-    showmessage('error');  }
-
-
-end;
-
-procedure TMainForm.miTriggerAccessViolationClick(Sender: TObject);
-begin
-  triggerAV(nil);
-  showmessage('Weeee! Fuck You!');
-end;
-
-
 procedure TMainForm.MenuItem16Click(Sender: TObject);
 {$ifdef darwin}
 var p: TProcessUTF8;
@@ -3689,17 +3617,7 @@ begin
   {$endif}
 end;
 
-procedure TMainForm.miClearWorkingSetClick(Sender: TObject);
-begin
-  if assigned(EmptyWorkingSet) then
-  begin
-    if messagedlg(rsClearingMeansSlowness, mtInformation, [mbyes, mbno], 0)=
-      mryes then
-      EmptyWorkingSet(processhandle);
-  end;
-end;
-
-procedure TMainForm.miTutorial64Click(Sender: TObject);
+procedure TMainForm.MenuItem12Click(Sender: TObject);
 {$ifdef darwin}
 var p: TProcessUTF8;
   path: string;
@@ -4095,6 +4013,11 @@ begin
   else
     frmSnapshotHandler.show;
   {$endif}
+end;
+
+procedure TMainForm.miTablistSeperatorClick(Sender: TObject);
+begin
+
 end;
 
 procedure TMainForm.miLockMouseInGameClick(Sender: TObject);
@@ -5377,9 +5300,13 @@ begin
     scantablist.AnchorSideLeft.Control:=panel5;
     scantablist.AnchorSideLeft.Side:=asrLeft;
 
-    scantablist.AnchorSideRight.Control:=logopanel;
-    if scantabtopcontrol.Top+scantabtopcontrol.Height<(logopanel.Height-4) then
-      scantablist.AnchorSideRight.Side:=asrLeft
+    btnNewScan.BorderSpacing.Top:=30;
+    scantablist.AnchorSideBottom.Control:=btnNewScan;
+    scantablist.AnchorSideBottom.Side:=asrBottom;
+
+    scantablist.AnchorSideRight.Control:=panel5;
+    if scantabtopcontrol.Top+scantabtopcontrol.Height<(panel5.Height-4) then
+      scantablist.AnchorSideRight.Side:=asrRight
     else
       scantablist.AnchorSideRight.Side:=asrRight; //it can go under the logo
 
@@ -5836,7 +5763,6 @@ var
   createlog: boolean;
   s: string;
 begin
-  exceptionerrorcs:=TCriticalSection.Create;
   mtid:=MainThreadID;
 
   tthread.NameThreadForDebugging('Main GUI Thread', GetCurrentThreadId);
@@ -5960,7 +5886,6 @@ begin
   frmLuaTableScript.Caption := rsLuaScriptCheatTable;
   frmLuaTableScript.Save1.OnClick := miSave.onclick;
   frmLuaTableScript.SaveAs1.OnClick:= save1.OnClick;
-  frmLuaTableScript.Name := 'frmLuaTableScript';
 
 
   hotkeypressed := -1;
@@ -6231,7 +6156,9 @@ begin
   addresslist.OnAutoAssemblerEdit := AddressListAutoAssemblerEdit;
   addresslist.Align := alClient;
   addresslist.AutoSize:=true;
-
+  addresslist.BevelWidth:=1;
+  addresslist.BevelInner:=BvNone;
+  addresslist.BevelOuter:=BvNone;
 
   symhandler.loadCommonModuleList;
 
@@ -6897,8 +6824,8 @@ begin
     groupconfigbutton.width:=scantype.width;
     groupconfigbutton.height:=scantype.height;
 
-    groupconfigbutton.AnchorSideTop.Side:=asrBottom;
-    groupconfigbutton.AnchorSideTop.Control:=scanvalue;
+    groupconfigbutton.AnchorSideBottom.Side:=asrBottom;
+    groupconfigbutton.AnchorSideBottom.Control:=scanvalue;
     groupconfigbutton.BorderSpacing.Top:=scantype.top-(scanvalue.Top+scanvalue.Height);
 
     groupconfigbutton.AnchorSideLeft.Control:=VarType;
@@ -7720,8 +7647,6 @@ begin
         reg.WriteInteger('scan CopyOnWrite', integer(cbCopyOnWrite.State));
         reg.WriteInteger('scan Executable', integer(cbExecutable.State));
         reg.WriteInteger('scan Writable', integer(cbWritable.State));
-
-        reg.WriteBool('scan PresentMemoryOnly', cbPresentMemoryOnly.checked);
       end;
     except
 
@@ -8400,13 +8325,9 @@ begin
 
     if messagedlg(rsTryTutorial, mtConfirmation, [mbYes, mbNo], 0) = mrYes then
     {$ifdef darwin}
-      miTutorial64.click;
+      MenuItem12.click;
     {$else}
-      {$ifdef cpu32}
       miTutorial.Click;
-      {$else}
-      miTutorial64.Click;
-      {$endif}
     {$endif}
   end;
 
@@ -8516,7 +8437,7 @@ begin
   foundlist := tfoundlist.Create(foundlist3, memscan);
 
 
-  logo.Width:=settingsbutton.width;
+  // logo.Width:=settingsbutton.width;
 
   {$ifdef altname}
   rname:='IMAGES_ALT_CELOGO';
@@ -8541,8 +8462,8 @@ begin
     freeandnil(rs);
   end;
 
-  if settingsbutton.Width>logo.Picture.Width then
-    logo.Width:=settingsbutton.width;
+  // if settingsbutton.Width>logo.Picture.Width then
+  //   logo.Width:=settingsbutton.width;
 
   if logo.Width>=80 then
   begin
@@ -8746,14 +8667,14 @@ begin
 
   i:=((logopanel.Top+logopanel.height)-scanvalue.top)+2;
   if i>0 then
-    scantext.BorderSpacing.Top:=scantext.BorderSpacing.Top+i;
+    scantext.BorderSpacing.Top:=scantext.BorderSpacing.Top;
 
   if pnlScanValueOptions.top+pnlScanValueOptions.Height>scanvalue.top+scanvalue.height then
     scantype.AnchorSideTop.Control:=pnlScanValueOptions
   else
   begin
     scantype.AnchorSideTop.Control:=scanvalue;
-    scantype.BorderSpacing.Top:=2;
+    scantype.BorderSpacing.Top:=5;
   end;
 
   panel9.borderspacing.Top:=(scantype.height div 2)-(cbNot.Height div 2);
@@ -8799,7 +8720,7 @@ begin
 
 
     //initial state: focus on the addresslist
-    panel5.height:=gbScanOptions.top+gbScanOptions.Height;
+    // panel5.height:=gbScanOptions.top+gbScanOptions.Height;
 
     i:=12*addresslist.Items.Owner.DefaultItemHeight;
     j:=addresslist.height;
@@ -9910,12 +9831,6 @@ end;
 
 procedure TMainForm.miTutorialClick(Sender: TObject);
 begin
-  if not fileexists(cheatenginedir+{$ifdef altname}'rtmtutorial-i386.exe'{$else}'Tutorial-i386.exe'{$endif}) then
-  begin
-    if fileexists(cheatenginedir+{$ifdef altname}'rtmtutorial-i386.cepack'{$else}'Tutorial-i386.cepack'{$endif}) then
-      ceunpackfile(cheatenginedir+{$ifdef altname}'rtmtutorial-i386.cepack'{$else}'Tutorial-i386.cepack'{$endif}, cheatenginedir+{$ifdef altname}'rtmtutorial-i386.exe'{$else}'Tutorial-i386.exe'{$endif}, false);
-  end;
-
   shellexecute(0, 'open', pchar(cheatenginedir+{$ifdef altname}'rtmtutorial-i386.exe'{$else}'Tutorial-i386.exe'{$endif}), nil, nil, sw_show);
 end;
 
@@ -10349,7 +10264,6 @@ begin
     memscan.luaformula:=cbLuaFormula.visible and cbLuaFormula.checked;
     memscan.NewLuaState:=cbNewLuaState.Checked;
     memscan.busyformIsModal:=true;
-    memscan.workingsetonly:=(getConnection=nil) and cbPresentMemoryOnly.checked;  //workingsetonly is false when networked
 
     memscan.firstscan(GetScanType2, getVarType2, roundingtype,
       scanvalue.Text, svalue2, scanStart, scanStop,
@@ -10818,11 +10732,7 @@ begin
       if speedhack <> nil then
         FreeAndNil(speedhack);
 
-      IF (GetKeyState(VK_MBUTTON) and $8000)=$8000 THEN
-      begin
-        outputdebugstring('bla');
-        raise exception.create('Using alternate method');
-      end;
+      ss:=GetKeyShiftState;
 
 
       speedhack := TSpeedhack.Create;
@@ -11100,15 +11010,7 @@ procedure TMainForm.DoGroupconfigButtonClick(sender: tobject);
 var gcf: TfrmGroupScanAlgoritmGenerator;
 begin
   gcf:=TfrmGroupScanAlgoritmGenerator.create(self);
-  try
-    gcf.parseParameters(scanvalue.text);
-  except
-    on e:exception do
-    begin
-      MessageDlg(e.message,mtError,[mbok],0);
-      exit;
-    end;
-  end;
+  gcf.parseParameters(scanvalue.text);
 
   if gcf.showmodal=mrok then
     scanvalue.text:=gcf.getparameters;

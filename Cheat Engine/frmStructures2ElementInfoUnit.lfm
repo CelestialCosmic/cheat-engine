@@ -128,7 +128,7 @@ object frmStructures2ElementInfo: TfrmStructures2ElementInfo
     Anchors = [akTop, akLeft, akRight]
     BorderSpacing.Left = 12
     BorderSpacing.Right = 20
-    Constraints.MinWidth = 50
+    Constraints.MinWidth = 0
     Enabled = False
     OnChange = edtByteSizeChange
     TabOrder = 2
@@ -252,7 +252,7 @@ object frmStructures2ElementInfo: TfrmStructures2ElementInfo
     Anchors = [akTop, akLeft, akRight]
     BorderSpacing.Left = 12
     BorderSpacing.Right = 20
-    Constraints.MinWidth = 50
+    Constraints.MinWidth = 0
     Enabled = False
     OnChange = edtChildstartChange
     TabOrder = 6

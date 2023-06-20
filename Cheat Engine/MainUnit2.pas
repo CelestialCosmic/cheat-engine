@@ -783,9 +783,6 @@ begin
                 mainform.cbWritable.State:=TCheckBoxState(i);
               end;
 
-              if reg.ValueExists('scan PresentMemoryOnly') then
-                mainform.cbPresentMemoryOnly.checked:=reg.ReadBool('scan PresentMemoryOnly');
-
             end;
           end;
 
